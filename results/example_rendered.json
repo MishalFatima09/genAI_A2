@@ -1,0 +1,13 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a clinical research assistant that screens patient records against individual clinical trial criteria. You see a patient record whose sentences are numbered with their original IDs (e.g. '3. ...'). For the given criterion, decide the eligibility label and cite the original sentence IDs that support the decision. Answer with a single JSON object and nothing else, using the schema {\"label\": string, \"evidence\": [int, ...]}. Use only these labels for inclusion criteria: included, not included, not enough information, not applicable. Use only these labels for exclusion criteria: excluded, not excluded, not enough information, not applicable. Cite evidence sentence IDs exactly as numbered in the record. If the record does not contain the information needed, use 'not enough information' and cite the most relevant sentences or an empty list. If the criterion cannot apply to this patient, use 'not applicable'."
+    },
+    {
+      "role": "user",
+      "content": "Patient record:\n0. A 58-year-old nonsmoker white female with mild exertional dyspnea and occasional cough is found to have a left lung mass on chest x-ray.\n1. She is otherwise asymptomatic.\n2. A neurologic examination is unremarkable, but a CT scan of the head shows a solitary mass in the right frontal lobe.\n3. The patient will provide informed consent, and will comply with the trial protocol without any practical issues.\n\nCriterion type: inclusion\nCriterion: Participant is a lung cancer patient.\n\nReturn the JSON decision."
+    }
+  ],
+  "target": "{\"label\":\"not enough information\",\"evidence\":[0]}"
+}

@@ -1,0 +1,72 @@
+{
+  "label_distribution": {
+    "train": {
+      "exclusion|excluded": 8,
+      "exclusion|not applicable": 23,
+      "exclusion|not enough information": 65,
+      "exclusion|not excluded": 292,
+      "inclusion|included": 88,
+      "inclusion|not applicable": 5,
+      "inclusion|not enough information": 109,
+      "inclusion|not included": 13
+    },
+    "val": {
+      "exclusion|excluded": 2,
+      "exclusion|not applicable": 11,
+      "exclusion|not enough information": 26,
+      "exclusion|not excluded": 101,
+      "inclusion|included": 35,
+      "inclusion|not applicable": 1,
+      "inclusion|not enough information": 27,
+      "inclusion|not included": 3
+    },
+    "test": {
+      "exclusion|not applicable": 12,
+      "exclusion|not enough information": 28,
+      "exclusion|not excluded": 91,
+      "inclusion|included": 27,
+      "inclusion|not applicable": 3,
+      "inclusion|not enough information": 38,
+      "inclusion|not included": 7,
+      "exclusion|excluded": 0
+    }
+  },
+  "n_forbidden_columns_dropped": 4,
+  "token_stats": {
+    "model": "Qwen/Qwen2.5-1.5B-Instruct",
+    "max_prompt_tokens": 2048,
+    "train": {
+      "n_rows": 603,
+      "prompt_tokens_min": 286,
+      "prompt_tokens_p50": 350,
+      "prompt_tokens_p95": 539,
+      "prompt_tokens_max": 657,
+      "target_tokens_mean": 11.12,
+      "target_tokens_max": 26,
+      "rows_over_limit_before_truncation": 0,
+      "rows_dropping_gold_evidence": 0
+    },
+    "val": {
+      "n_rows": 206,
+      "prompt_tokens_min": 327,
+      "prompt_tokens_p50": 390,
+      "prompt_tokens_p95": 435,
+      "prompt_tokens_max": 495,
+      "target_tokens_mean": 10.77,
+      "target_tokens_max": 18,
+      "rows_over_limit_before_truncation": 0,
+      "rows_dropping_gold_evidence": 0
+    },
+    "test": {
+      "n_rows": 206,
+      "prompt_tokens_min": 297,
+      "prompt_tokens_p50": 349,
+      "prompt_tokens_p95": 420,
+      "prompt_tokens_max": 561,
+      "target_tokens_mean": 10.81,
+      "target_tokens_max": 20,
+      "rows_over_limit_before_truncation": 0,
+      "rows_dropping_gold_evidence": 0
+    }
+  }
+}
