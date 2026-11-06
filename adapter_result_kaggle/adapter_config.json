@@ -1,0 +1,29 @@
+{
+  "peft_type": "LORA",
+  "task_type": "CAUSAL_LM",
+  "r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "target_modules": [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj"
+  ],
+  "bias": "none",
+  "fan_in_fan_out": false,
+  "enable_lora": null,
+  "modules_to_save": null,
+  "init_lora_weights": true,
+  "layers_to_transform": null,
+  "layers_pattern": null,
+  "rank_pattern": {},
+  "alpha_pattern": {},
+  "megatron_config": null,
+  "megatron_core": "megatron.core",
+  "use_dora": false,
+  "use_rslora": false
+}

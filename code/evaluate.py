@@ -224,6 +224,7 @@ def run_one(model, tokenizer, rows: list[dict], device: str, tag: str,
             "gold_evidence": parse_gold_sentences(r["expert_sentences"]),
             "pred_label": parsed.label or "<parse_fail>",
             "pred_evidence": parsed.evidence,
+            "pred_explanation": parsed.explanation,
             "parse_ok": parsed.parse_ok,
             "raw_text": raw.strip(),
             "tag": tag,
@@ -245,6 +246,8 @@ def main() -> None:
     ap.add_argument("--allow-test", action="store_true",
                     help="required to evaluate on the held-out test split")
     ap.add_argument("--cpu", action="store_true", help="force CPU")
+    ap.add_argument("--only-after", action="store_true",
+                    help="run only the LoRA adapter (skip base model)")
     args = ap.parse_args()
 
     if args.split == "test" and not args.allow_test:
@@ -266,14 +269,15 @@ def main() -> None:
     tok = AutoTokenizer.from_pretrained(args.base_model)
     tags: dict[str, list[dict]] = {}
 
-    # BEFORE: base model, zero-shot
-    base = load_causal_lm(args.base_model, dtype).to(device)
-    base.eval()
-    tags["before_base"] = run_one(base, tok, rows, device, "before_base",
-                                  args.batch_size, args.max_new_tokens)
-    del base
-    if device == "cuda":
-        torch.cuda.empty_cache()
+    # BEFORE: base model, zero-shot (skip if --only-after)
+    if not args.only_after:
+        base = load_causal_lm(args.base_model, dtype).to(device)
+        base.eval()
+        tags["before_base"] = run_one(base, tok, rows, device, "before_base",
+                                      args.batch_size, args.max_new_tokens)
+        del base
+        if device == "cuda":
+            torch.cuda.empty_cache()
 
     # AFTER: base + LoRA adapter (merged weights)
     if args.compare:

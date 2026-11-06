@@ -1,8 +1,9 @@
-"""Shared prompt schema for the TrialGPT criterion-eligibility task (Task 1).
+"""Shared prompt schema for the TrialGPT criterion-eligibility task (Task 1 & 2).
 
 Input : (patient note with numbered sentences, criterion type, criterion text)
 Output: strict JSON {"label": <criterion-type-specific string>,
-                     "evidence": [<original sentence ints>]}
+                      "evidence": [<original sentence ints>],
+                      "explanation": <string>}
 
 Label vocabulary is fixed to the dataset's expert categories; inclusion and
 exclusion criteria use different positive/negative terms and must never be
@@ -38,9 +39,10 @@ SYSTEM_PROMPT = (
     "You are a clinical research assistant that screens patient records against "
     "individual clinical trial criteria. You see a patient record whose sentences "
     "are numbered with their original IDs (e.g. '3. ...'). For the given criterion, "
-    "decide the eligibility label and cite the original sentence IDs that support "
-    "the decision. Answer with a single JSON object and nothing else, using the "
-    'schema {"label": string, "evidence": [int, ...]}. '
+    "decide the eligibility label, cite the original sentence IDs that support "
+    "the decision, and provide a brief explanation based only on the available "
+    "information. Answer with a single JSON object and nothing else, using the "
+    'schema {"label": string, "evidence": [int, ...], "explanation": string}. '
     "Use only these labels for inclusion criteria: included, not included, "
     "not enough information, not applicable. "
     "Use only these labels for exclusion criteria: excluded, not excluded, "
@@ -48,7 +50,8 @@ SYSTEM_PROMPT = (
     "Cite evidence sentence IDs exactly as numbered in the record. "
     "If the record does not contain the information needed, use "
     "'not enough information' and cite the most relevant sentences or an empty list. "
-    "If the criterion cannot apply to this patient, use 'not applicable'."
+    "If the criterion cannot apply to this patient, use 'not applicable'. "
+    "Never treat absent evidence as proof of either eligibility or ineligibility."
 )
 
 _SENTENCE_RE = re.compile(r"(?m)^(\d+)\.\s+")
@@ -59,6 +62,7 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 class ParsedPrediction:
     label: str | None = None
     evidence: list[int] = field(default_factory=list)
+    explanation: str = ""
     parse_ok: bool = False
     raw: str = ""
 
@@ -104,7 +108,7 @@ def build_target(expert_eligibility: str, evidence_ids: list[int]) -> str:
 
 
 def parse_model_output(text: str, criterion_type: str | None = None) -> ParsedPrediction:
-    """Parse a model response into label + evidence IDs (lenient but validated)."""
+    """Parse a model response into label + evidence IDs + explanation (lenient but validated)."""
     raw = text or ""
     result = ParsedPrediction(raw=raw)
     m = _JSON_RE.search(raw)
@@ -125,11 +129,13 @@ def parse_model_output(text: str, criterion_type: str | None = None) -> ParsedPr
                 evidence.append(int(e))
             except (TypeError, ValueError):
                 continue
+    explanation = str(obj.get("explanation", "")).strip()
     valid_labels = LABELS_BY_TYPE.get(criterion_type, ALL_LABELS) if criterion_type else ALL_LABELS
     if label not in valid_labels:
         return result
     result.label = label
     result.evidence = sorted(set(evidence))
+    result.explanation = explanation
     result.parse_ok = True
     return result
 

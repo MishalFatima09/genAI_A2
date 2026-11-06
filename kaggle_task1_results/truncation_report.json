@@ -1,0 +1,24 @@
+{
+  "max_prompt_tokens": 2048,
+  "policy": "longest prefix of numbered sentences + final consent sentence; IDs never renumbered",
+  "per_split": {
+    "train": {
+      "n_rows": 603,
+      "n_truncated_rows": 0,
+      "dropped_sentence_id_counts": {},
+      "rows_where_gold_evidence_was_dropped": 0
+    },
+    "val": {
+      "n_rows": 206,
+      "n_truncated_rows": 0,
+      "dropped_sentence_id_counts": {},
+      "rows_where_gold_evidence_was_dropped": 0
+    },
+    "test": {
+      "n_rows": 206,
+      "n_truncated_rows": 0,
+      "dropped_sentence_id_counts": {},
+      "rows_where_gold_evidence_was_dropped": 0
+    }
+  }
+}

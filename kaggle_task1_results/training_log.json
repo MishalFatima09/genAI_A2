@@ -1,0 +1,44 @@
+{
+  "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "method": "LoRA (peft)",
+  "seed": 42,
+  "device": "cuda",
+  "mixed_precision": "fp16",
+  "load_dtype": "float16",
+  "cpu_autocast_bf16": false,
+  "gradient_checkpointing": true,
+  "torch_version": "2.11.0+cu130",
+  "transformers_version": "5.20.2",
+  "hyperparameters": {
+    "epochs": 3.0,
+    "batch_size": 1,
+    "grad_accum": 16,
+    "lr": 0.0002,
+    "r": 16,
+    "alpha": 32,
+    "dropout": 0.05,
+    "max_length": 2048,
+    "warmup_ratio": 0.03,
+    "weight_decay": 0.01
+  },
+  "train_rows": 603,
+  "val_rows": 206,
+  "global_steps": 114,
+  "best_val_loss": 0.14688,
+  "wall_time_sec": 943.7,
+  "history": [
+    {
+      "epoch": 1,
+      "val_loss": 0.15689
+    },
+    {
+      "epoch": 2,
+      "val_loss": 0.14688
+    },
+    {
+      "epoch": 3,
+      "val_loss": 0.15078
+    }
+  ],
+  "date": "2026-11-03 18:13:31"
+}
