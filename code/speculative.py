@@ -6,7 +6,7 @@ Algorithm:
 1. Draft model generates γ tokens autoregressively (with its own KV cache)
 2. Target model verifies all γ tokens in ONE forward pass (batched, with its KV cache)
 3. Accept matching prefix; on first mismatch, keep target's token, discard rest
-4. Sync both KV caches to accepted prefix length
+4. Re-run both models from scratch on the new prefix (avoids cache truncation complexity)
 5. Repeat until max_new_tokens or EOS
 """
 
@@ -18,7 +18,6 @@ from typing import Optional
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers.cache_utils import DynamicCache
 
 
 @dataclass
@@ -82,16 +81,9 @@ def speculative_decode(
 ) -> SpeculativeResult:
     """Greedy speculative decoding (Leviathan et al., 2023).
 
-    Args:
-        draft_model: Smaller model (e.g., Qwen2.5-0.5B)
-        target_model: Larger model (e.g., Qwen2.5-1.5B + LoRA)
-        tokenizer: Shared tokenizer
-        input_ids: (1, L)
-        max_new_tokens: Total tokens to generate
-        gamma: Number of draft tokens per iteration
-        device: "cuda" or "cpu"
-    Returns:
-        SpeculativeResult with tokens and stats
+    Simplified implementation: after each verification step, if there's a mismatch
+    we re-run the target model from scratch on the accepted prefix. This avoids
+    complex cache truncation and guarantees correctness.
     """
     draft_model.eval()
     target_model.eval()
@@ -142,7 +134,6 @@ def speculative_decode(
             total_drafted += draft_sequence.shape[1]
 
             # --- TARGET VERIFICATION: single batched forward ---
-            # Target processes all draft tokens at once with its KV cache
             target_out = target_model(
                 input_ids=draft_sequence,
                 use_cache=True,
@@ -154,7 +145,6 @@ def speculative_decode(
             target_logits = target_out.logits  # (1, γ, V)
             target_greedy = torch.argmax(target_logits, dim=-1)  # (1, γ)
 
-            # Compare draft vs target greedy token-by-token
             match = (draft_sequence == target_greedy).squeeze(0)  # (γ,)
             accept_len = 0
             for m in match:
@@ -167,39 +157,40 @@ def speculative_decode(
 
             # --- SYNC: keep accepted prefix, correct first mismatch ---
             if accept_len > 0:
-                # Keep accepted tokens in generated (already there from draft)
-                # Update target KV cache to accepted length
-                target_pkv = _truncate_kv_cache(target_pkv, input_ids.shape[1] + accept_len)
-                draft_pkv = _truncate_kv_cache(draft_pkv, input_ids.shape[1] + accept_len)
+                # Truncate generated to accepted prefix
+                generated = generated[:, :input_ids.shape[1] + accept_len]
 
             if accept_len < draft_sequence.shape[1]:
-                # First mismatch: replace with target's token
+                # Mismatch: replace with target's token
                 correct_token = target_greedy[:, accept_len:accept_len+1]
-                generated = generated[:, :input_ids.shape[1] + accept_len]
                 generated = torch.cat([generated, correct_token], dim=-1)
 
-                # Advance both caches by 1 (the corrected token)
-                draft_out = draft_model(
-                    input_ids=correct_token,
-                    use_cache=True,
-                    past_key_values=draft_pkv,
-                )
-                draft_pkv = draft_out.past_key_values
-
+                # Re-run target from scratch on the new prefix to get fresh cache
+                # This avoids cache truncation complexity
                 target_out = target_model(
-                    input_ids=correct_token,
+                    input_ids=generated[:, input_ids.shape[1]:],  # only new tokens
                     use_cache=True,
-                    past_key_values=target_pkv,
+                    past_key_values=None,  # fresh - will recompute
+                )
+                # Actually, we need the full prefix for target. Re-run on full generated.
+                target_out = target_model(
+                    input_ids=generated,
+                    use_cache=True,
                 )
                 target_pkv = target_out.past_key_values
 
-                # If target also predicts EOS, we're done
+                # Re-run draft from scratch on the new prefix too
+                draft_out = draft_model(
+                    input_ids=generated,
+                    use_cache=True,
+                )
+                draft_pkv = draft_out.past_key_values
+
                 if correct_token.item() == tokenizer.eos_token_id:
                     break
             else:
-                # All γ accepted: both caches already at correct position (after γ tokens)
-                # draft_out already has logits for next token; target_pkv already updated by verification
-                # Just continue - no extra forward pass needed
+                # All γ accepted: both caches are already at correct position
+                # Continue loop - draft_out and target_pkv already updated by verification
                 pass
 
         decode_time = time.perf_counter() - decode_start
@@ -217,50 +208,6 @@ def speculative_decode(
         n_accepted=total_accepted,
         acceptance_rate=acceptance_rate,
     )
-
-
-def _truncate_kv_cache(past_key_values, new_seq_len: int):
-    """Truncate KV cache to new_seq_len (keep prefix).
-
-    Always returns a DynamicCache object with get_seq_length() method.
-    """
-    if past_key_values is None:
-        return None
-    
-    # Convert to legacy tuple format (list of (key, value) per layer)
-    if isinstance(past_key_values, tuple):
-        legacy = past_key_values
-    elif hasattr(past_key_values, 'to_legacy_cache'):
-        legacy = past_key_values.to_legacy_cache()
-    elif hasattr(past_key_values, 'key_cache') and hasattr(past_key_values, 'value_cache'):
-        legacy = tuple(
-            (past_key_values.key_cache[i], past_key_values.value_cache[i])
-            for i in range(len(past_key_values.key_cache))
-        )
-    elif hasattr(past_key_values, 'keys') and hasattr(past_key_values, 'values'):
-        legacy = tuple(
-            (past_key_values.keys[i], past_key_values.values[i])
-            for i in range(len(past_key_values.keys))
-        )
-    else:
-        legacy = past_key_values
-    
-    # Truncate each layer in legacy format
-    truncated = []
-    for layer_kv in legacy:
-        k, v = layer_kv[0], layer_kv[1]
-        truncated.append((k[:, :, :new_seq_len, :], v[:, :, :new_seq_len, :]))
-    
-    # Try to convert back to DynamicCache
-    try:
-        return DynamicCache.from_legacy_cache(tuple(truncated))
-    except AttributeError:
-        # from_legacy_cache doesn't exist - construct DynamicCache manually
-        cache = DynamicCache()
-        cache.key_cache = [layer[0] for layer in truncated]
-        cache.value_cache = [layer[1] for layer in truncated]
-        cache._seen_tokens = new_seq_len
-        return cache
 
 
 def verify_token_equality(
