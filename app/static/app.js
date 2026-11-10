@@ -63,6 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
     .then((r) => r.json())
     .then((data) => {
       if (!data.success) return;
+      populateKVBenchmarks(data.task3_kv_results);
       populateSpeculativeBenchmarks(data.task5_speculative_results);
       populateTiledBenchmarks(data.task4_tiled_results);
       populateConfusionMatrix(data.task2_test_metrics);
@@ -445,6 +446,41 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="font-monospace fw-bold text-primary">${sTok} tok/s</td>
         <td><span class="badge ${parseFloat(speedup) >= 1.0 ? 'bg-success' : 'bg-warning text-dark'}">${speedup}</span></td>
         <td><span class="badge bg-info-subtle text-info border">${acc}</span></td>
+        <td>${matchBadge}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function populateKVBenchmarks(kvData) {
+    if (!kvData || !kvData.configs) return;
+    const tbody = document.getElementById("kvBenchmarkTableBody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    kvData.configs.forEach((c) => {
+      const uTok = c.uncached ? c.uncached.tokens_s_mean.toFixed(1) : "N/A";
+      const cTok = c.cached ? c.cached.tokens_s_mean.toFixed(1) : "N/A";
+      const speedupVal = c.uncached && c.cached && c.uncached.tokens_s_mean > 0
+        ? (c.cached.tokens_s_mean / c.uncached.tokens_s_mean).toFixed(2)
+        : "N/A";
+      const prefillS = c.cached ? (c.cached.prefill_s_mean * 1000).toFixed(1) + " ms" : "N/A";
+      const decodeS = c.cached ? c.cached.decode_s_mean.toFixed(2) + " s" : "N/A";
+      const peakMem = c.cached ? c.cached.peak_mem_mb_mean.toFixed(0) + " MB" : "N/A";
+      const matchBadge = c.correctness && c.correctness.match
+        ? `<span class="badge bg-success">MATCH (100%)</span>`
+        : `<span class="badge bg-danger">MISMATCH</span>`;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><span class="badge bg-secondary font-monospace">L = ${c.prompt_len}</span></td>
+        <td><span class="badge bg-light text-dark border font-monospace">Gen = ${c.gen_len}</span></td>
+        <td class="font-monospace text-muted">${uTok} tok/s</td>
+        <td class="font-monospace fw-bold text-success">${cTok} tok/s</td>
+        <td><span class="badge bg-success-subtle text-success border border-success-subtle fw-bold">${speedupVal}x</span></td>
+        <td class="font-monospace small">${prefillS}</td>
+        <td class="font-monospace small">${decodeS}</td>
+        <td class="font-monospace small">${peakMem}</td>
         <td>${matchBadge}</td>
       `;
       tbody.appendChild(tr);

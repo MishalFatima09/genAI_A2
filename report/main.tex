@@ -210,6 +210,45 @@ Detailed examination of held-out test predictions revealed distinct failure mode
     \item \textbf{Symptom vs Diagnosis Confusion}: In Ann 827, wheezing was treated as confirmed bronchial asthma.
 \end{enumerate}
 
+\subsection{Explicit KV-Cache Decoding Benchmark (Task 3)}
+Table \ref{tab:kv_results} and Fig. \ref{fig:kv_perf} summarize the empirical decoding speedup and memory efficiency achieved by \texttt{ExplicitKVCache} versus uncached recomputation on NVIDIA GPU across 9 sequence configurations ($L \in \{127, 505, 1009\}$, $\text{Gen} \in \{16, 64, 128\}$, 5 repeats per config).
+
+\begin{itemize}
+    \item \textbf{Token Equivalence}: In every configuration, generated tokens between cached and uncached decoding showed 100\% exact token-by-token equality (\texttt{match=True}).
+    \item \textbf{Short Prompts ($L=127$)}: Decode speedup was modest ($1.09\times \text{--} 1.14\times$), as prefill overhead and small sequence lengths do not dominate GPU kernel execution.
+    \item \textbf{Long Prompts ($L=1009$)}: Cached decode throughput remained virtually constant at $\approx 13.9\text{--}14.6\text{ tok/s}$. In contrast, uncached throughput plummeted to $2.27\text{ tok/s}$, resulting in a \textbf{6.11$\times$ speedup} for 128 generated tokens. This demonstrates the critical transition from quadratic $O((L+t)^2)$ recomputation to $O(L+t)$ memory-bandwidth bound single-query steps.
+\end{itemize}
+
+\begin{table}[htbp]
+\caption{Task 3 Explicit KV-Cache vs. Uncached Decoding Throughput}
+\label{tab:kv_results}
+\centering
+\begin{tabular}{cccccc}
+\toprule
+\textbf{Prompt} & \textbf{Gen} & \textbf{Cached tok/s} & \textbf{Uncached tok/s} & \textbf{Speedup} & \textbf{Match} \\
+\midrule
+127 & 16 & 14.52 & 12.75 & 1.14$\times$ & True \\
+127 & 64 & 13.82 & 12.73 & 1.09$\times$ & True \\
+127 & 128 & 13.91 & 12.53 & 1.11$\times$ & True \\
+\midrule
+505 & 16 & 14.69 & 5.25 & 2.80$\times$ & True \\
+505 & 64 & 14.05 & 4.89 & 2.87$\times$ & True \\
+505 & 128 & 13.91 & 4.64 & 3.00$\times$ & True \\
+\midrule
+1009 & 16 & 14.60 & 2.49 & 5.86$\times$ & True \\
+1009 & 64 & 13.90 & 2.35 & 5.91$\times$ & True \\
+1009 & 128 & 13.87 & 2.27 & \textbf{6.11$\times$} & True \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\columnwidth]{figures/fig5_kv_cache.pdf}
+\caption{Task 3 KV-cache vs. uncached throughput and speedup scaling across prompt lengths ($L=127, 505, 1009$).}
+\label{fig:kv_perf}
+\end{figure}
+
 \subsection{Tiled Online-Softmax Attention Validation (Task 4)}
 Numerical verification proved exact equivalence to reference SDPA ($L \in [64, 256]$) with maximum absolute error $<5.96 \times 10^{-7}$ and \texttt{allclose=True}. On long sequences ($L=1024$), tiled attention reduced peak activation memory from 97.7 MB to 24.7 MB (\textbf{74.7\% memory savings}, Fig. \ref{fig:tiled_att}).
 

@@ -183,9 +183,60 @@ def plot_speculative_decoding():
     plt.close()
     print("Generated Fig 4: Speculative Decoding Performance")
 
+# -----------------------------------------------------------------------------
+# Figure 5: Task 3 KV-Cache Throughput Scaling vs Uncached
+# -----------------------------------------------------------------------------
+def plot_kv_cache():
+    kv_json = RESULTS_DIR / "kv_benchmark.json"
+    if not kv_json.exists():
+        return
+    with open(kv_json) as f:
+        kv_data = json.load(f)
+
+    configs = kv_data.get("configs", [])
+    # Group by prompt length for gen_len = 128
+    long_gen = [c for c in configs if c.get("gen_len") == 128]
+    if not long_gen:
+        long_gen = configs[:3]
+
+    labels = [f"Prompt={c['prompt_len']}\n(Gen=128)" for c in long_gen]
+    cached_tok = [c["cached"]["tokens_s_mean"] for c in long_gen]
+    uncached_tok = [c["uncached"]["tokens_s_mean"] for c in long_gen]
+    speedups = [c / u for c, u in zip(cached_tok, uncached_tok)]
+
+    fig, ax1 = plt.subplots(figsize=(7, 3.8))
+    x = np.arange(len(labels))
+    width = 0.35
+
+    ax1.bar(x - width/2, uncached_tok, width, label="Uncached Reference", color="#94a3b8")
+    ax1.bar(x + width/2, cached_tok, width, label="KV-Cached (ExplicitKVCache)", color="#10b981")
+
+    ax1.set_ylabel("Decoding Throughput (Tokens / Second)")
+    ax1.set_title("Task 3: KV-Cached vs. Uncached Decoding Scaling (Qwen2.5-1.5B LoRA)")
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels)
+    ax1.legend(loc="upper left")
+    ax1.grid(True, linestyle="--", alpha=0.3)
+
+    ax2 = ax1.twinx()
+    ax2.plot(x, speedups, color="#b91c1c", marker="o", linewidth=2, label="KV Speedup Factor")
+    ax2.set_ylabel("Speedup Ratio (Cached / Uncached)", color="#b91c1c")
+    ax2.tick_params(axis="y", labelcolor="#b91c1c")
+    ax2.set_ylim(0, 8.0)
+
+    for i, sp in enumerate(speedups):
+        ax2.annotate(f"{sp:.2f}x", (x[i], sp), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=9, fontweight="bold", color="#b91c1c")
+
+    plt.tight_layout()
+    plt.savefig(FIG_DIR / "fig5_kv_cache.pdf")
+    plt.savefig(FIG_DIR / "fig5_kv_cache.png")
+    plt.close()
+    print("Generated Fig 5: KV-Cache Scaling")
+
 if __name__ == "__main__":
     plot_training_curve()
     plot_confusion_matrices()
     plot_tiled_attention()
     plot_speculative_decoding()
+    plot_kv_cache()
     print("All publication figures generated successfully in report/figures/")

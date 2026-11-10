@@ -102,7 +102,7 @@ def load_data_cache() -> None:
     results_dir = ROOT / "results"
     for name in ["metrics_after_lora_test.json", "metrics_after_lora_val.json", 
                  "metrics_before_base_val.json", "task4_results.json", 
-                 "task5_results.json", "data_stats.json"]:
+                 "task5_results.json", "data_stats.json", "kv_benchmark.json"]:
         file_path = results_dir / name
         if file_path.exists():
             with open(file_path, "r", encoding="utf-8") as f:
@@ -558,6 +558,7 @@ def get_benchmarks():
         "task2_test_metrics": DATA_CACHE.get("metrics_after_lora_test.json"),
         "task2_val_before": DATA_CACHE.get("metrics_before_base_val.json"),
         "task2_val_after": DATA_CACHE.get("metrics_after_lora_val.json"),
+        "task3_kv_results": DATA_CACHE.get("kv_benchmark.json"),
         "task4_tiled_results": DATA_CACHE.get("task4_results.json"),
         "task5_speculative_results": DATA_CACHE.get("task5_results.json"),
     })
@@ -649,8 +650,8 @@ def main():
     args = parser.parse_args()
 
     print(f"\n" + "=" * 70)
-    print("🚀 TrialGPT Clinical Eligibility Screening Dashboard (Task 6)")
-    print(f"🔗 Accessible at: http://{args.host}:{args.port}")
+    print("[Task 6] TrialGPT Clinical Eligibility Screening Dashboard")
+    print(f"URL: http://{args.host}:{args.port}")
     print("=" * 70 + "\n")
     app.run(host=args.host, port=args.port, debug=args.debug)
 
