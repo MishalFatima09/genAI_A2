@@ -228,8 +228,7 @@ def speculative_decode(
 def _truncate_kv_cache(past_key_values, new_seq_len: int):
     """Truncate KV cache to new_seq_len (keep prefix).
 
-    Works with any cache format by converting to legacy tuple, truncating,
-    and returning a format compatible with the model.
+    Always returns a DynamicCache object with get_seq_length() method.
     """
     if past_key_values is None:
         return None
@@ -258,12 +257,16 @@ def _truncate_kv_cache(past_key_values, new_seq_len: int):
         k, v = layer_kv[0], layer_kv[1]
         truncated.append((k[:, :, :new_seq_len, :], v[:, :, :new_seq_len, :]))
     
-    # Try to convert back to DynamicCache, fall back to tuple
+    # Try to convert back to DynamicCache
     try:
         return DynamicCache.from_legacy_cache(tuple(truncated))
     except AttributeError:
-        # from_legacy_cache doesn't exist - return legacy tuple
-        return tuple(truncated)
+        # from_legacy_cache doesn't exist - construct DynamicCache manually
+        cache = DynamicCache()
+        cache.key_cache = [layer[0] for layer in truncated]
+        cache.value_cache = [layer[1] for layer in truncated]
+        cache._seen_tokens = new_seq_len
+        return cache
 
 
 def verify_token_equality(
