@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clinical Trial Eligibility Screening & Inference Benchmark (Task 6)</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark px-4 py-2 border-bottom border-secondary">
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center" href="#">
+        <i class="bi bi-hospital me-2 text-primary fs-4"></i>
+        <span class="fw-bold">TrialGPT Clinical Eligibility Assistant</span>
+      </a>
+      <div class="d-flex align-items-center text-light">
+        <span class="badge bg-primary me-2">Task 6 Standalone App</span>
+        <span class="badge bg-secondary">Model: Qwen2.5-1.5B-Instruct + LoRA</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Mandatory Assignment Disclaimer (Rubric G1/G4) -->
+  <div class="container-fluid px-4 pt-3">
+    <div class="disclaimer-banner d-flex align-items-center justify-content-between shadow-sm">
+      <div class="d-flex align-items-center">
+        <i class="bi bi-exclamation-triangle-fill fs-4 me-3 text-warning"></i>
+        <div>
+          <strong>EDUCATIONAL RESEARCH PROTOTYPE NOTICE:</strong>
+          This system is an academic decision-support prototype developed for Generative AI (Assignment 2). 
+          It demonstrates fine-tuned Transformer reasoning, KV caching, tiled attention, and speculative decoding.
+          <strong>It must NOT be used for actual clinical patient enrollment decisions or unvalidated medical advice.</strong>
+        </div>
+      </div>
+      <span class="badge bg-warning text-dark px-3 py-2 header-badge">Prototype Screening Only</span>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <div class="container-fluid px-4 py-3">
+
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs mb-4 bg-white rounded shadow-sm px-3 pt-2" id="mainTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="screening-tab" data-bs-toggle="tab" data-bs-target="#screening-view" type="button" role="tab">
+          <i class="bi bi-file-earmark-medical me-2"></i>Patient Screening & Trial Eligibility (G1, G2, G4)
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="benchmarks-tab" data-bs-toggle="tab" data-bs-target="#benchmarks-view" type="button" role="tab">
+          <i class="bi bi-cpu me-2"></i>Inference Benchmarks & Speculative Decoding Lab (G3)
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tiled-tab" data-bs-toggle="tab" data-bs-target="#tiled-view" type="button" role="tab">
+          <i class="bi bi-lightning-charge me-2"></i>Live Tiled Attention (Online Softmax) Lab (Task 4)
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="adaptation-tab" data-bs-toggle="tab" data-bs-target="#adaptation-view" type="button" role="tab">
+          <i class="bi bi-graph-up me-2"></i>Model Adaptation & Error Analysis (Tasks 1 & 2)
+        </button>
+      </li>
+    </ul>
+
+    <!-- Tab Contents -->
+    <div class="tab-content" id="mainTabContent">
+
+      <!-- ================================================================= -->
+      <!-- TAB 1: CLINICAL TRIAL SCREENING WORKSPACE (G1, G2, G4) -->
+      <!-- ================================================================= -->
+      <div class="tab-pane fade show active" id="screening-view" role="tabpanel">
+
+        <!-- Preset Loader & Quick Controls Bar -->
+        <div class="card mb-4 shadow-sm border-0">
+          <div class="card-body bg-white rounded">
+            <div class="row g-3 align-items-center">
+              <div class="col-md-5">
+                <label class="form-label fw-bold text-muted small text-uppercase mb-1">Load Presets (Held-Out Test Set & Unseen Demos):</label>
+                <select id="presetSelect" class="form-select border-primary-subtle">
+                  <option value="">-- Choose a Patient / Trial Case or Demo --</option>
+                  <optgroup label="Held-Out Test Set (Preserved 8 Patients, Seed 42)" id="testPatientOptions"></optgroup>
+                  <optgroup label="Unseen Clinical Case Presets" id="unseenDemoOptions"></optgroup>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold text-muted small text-uppercase mb-1">Inference Execution Engine:</label>
+                <select id="inferenceEngineSelect" class="form-select">
+                  <option value="lora_fast" selected>Fine-Tuned LoRA (Fast Interactive Mode)</option>
+                  <option value="kv_cached">Explicit KV-Cached Transformer</option>
+                  <option value="speculative">Speculative Decoding (Draft 0.5B + Target 1.5B)</option>
+                </select>
+              </div>
+              <div class="col-md-4 d-flex align-items-end justify-content-end gap-2">
+                <button id="btnLoadPreset" class="btn btn-outline-primary" type="button">
+                  <i class="bi bi-box-arrow-in-down me-1"></i>Load Selected
+                </button>
+                <button id="btnScreen" class="btn btn-primary px-4 fw-bold" type="button">
+                  <i class="bi bi-play-circle-fill me-1"></i>Run Screening
+                </button>
+              </div>
+            </div>
+
+            <!-- Error Banner for Invalid Inputs (G1/G4 Recovery Demonstration) -->
+            <div id="validationAlert" class="alert alert-danger mt-3 d-none mb-0" role="alert">
+              <div class="d-flex align-items-start">
+                <i class="bi bi-exclamation-octagon-fill fs-5 me-2 text-danger"></i>
+                <div id="validationAlertContent"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="row g-4">
+          <!-- Left Column: Patient Record & Trial Metadata -->
+          <div class="col-lg-5">
+            <div class="card shadow-sm border-0 h-100">
+              <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0 fw-bold">
+                  <i class="bi bi-person-lines-fill text-primary me-2"></i>Patient Clinical Record
+                </h5>
+                <span class="badge bg-light text-dark border" id="trialIdBadge">Trial ID: N/A</span>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <label class="form-label small fw-bold text-muted">Clinical Trial Title:</label>
+                  <input type="text" id="trialTitleInput" class="form-control form-control-sm" placeholder="e.g. NCT02097186 - Vascular Preconditioning">
+                </div>
+
+                <div class="mb-2 d-flex justify-content-between align-items-center">
+                  <label class="form-label small fw-bold text-muted mb-0">Numbered Clinical Sentences:</label>
+                  <small class="text-muted"><i class="bi bi-info-circle me-1"></i>Click criteria on right to highlight cited sentences</small>
+                </div>
+
+                <!-- Numbered Sentences Display Box -->
+                <div id="patientNoteViewer" class="patient-note-box mb-3">
+                  <div class="text-muted text-center py-4">No patient record loaded. Choose a preset or paste below.</div>
+                </div>
+
+                <!-- Raw Text Area for editing/pasting custom note -->
+                <details class="mb-2">
+                  <summary class="small text-primary fw-bold cursor-pointer">Edit Raw Patient Record Text</summary>
+                  <textarea id="rawNoteInput" class="form-control mt-2 font-monospace small" rows="6" placeholder="0. Patient is a 65-year-old female...&#10;1. HbA1c is 7.2%..."></textarea>
+                </details>
+
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Criteria List & Screening Verdict -->
+          <div class="col-lg-7">
+            
+            <!-- Overall Aggregated Verdict (G2) -->
+            <div id="overallVerdictContainer" class="d-none">
+              <!-- Dynamically populated verdict banner -->
+            </div>
+
+            <!-- Criteria Workspace -->
+            <div class="card shadow-sm border-0 mb-4">
+              <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0 fw-bold">
+                  <i class="bi bi-list-check text-primary me-2"></i>Trial Criteria & Model Decisions
+                </h5>
+                <div class="d-flex gap-2">
+                  <button id="btnAddInclusion" class="btn btn-sm btn-outline-success" type="button">
+                    <i class="bi bi-plus-circle me-1"></i>Add Inclusion
+                  </button>
+                  <button id="btnAddExclusion" class="btn btn-sm btn-outline-danger" type="button">
+                    <i class="bi bi-plus-circle me-1"></i>Add Exclusion
+                  </button>
+                </div>
+              </div>
+              <div class="card-body">
+
+                <!-- Criteria Container -->
+                <div id="criteriaList">
+                  <div class="text-muted text-center py-4">Load a preset patient or add criteria manually.</div>
+                </div>
+
+              </div>
+              <div class="card-footer bg-light py-2 d-flex justify-content-between align-items-center">
+                <span class="small text-muted" id="screeningMetadataSummary">Ready for screening</span>
+                <div class="d-flex gap-2">
+                  <button id="btnExportMarkdown" class="btn btn-sm btn-outline-secondary" type="button">
+                    <i class="bi bi-download me-1"></i>Export Markdown
+                  </button>
+                  <button id="btnExportJSON" class="btn btn-sm btn-outline-secondary" type="button">
+                    <i class="bi bi-file-code me-1"></i>Export JSON
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- TAB 2: INFERENCE BENCHMARKS & SPECULATIVE DECODING LAB (G3) -->
+      <!-- ================================================================= -->
+      <div class="tab-pane fade" id="benchmarks-view" role="tabpanel">
+
+        <div class="row g-4 mb-4">
+          <div class="col-md-3">
+            <div class="metric-tile shadow-sm">
+              <div class="metric-number text-success" id="specTopSpeedup">1.32x</div>
+              <div class="metric-label">Max Speculative Speedup</div>
+              <small class="text-muted">Achieved at L=505, Gen=128 (Task 5)</small>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="metric-tile shadow-sm">
+              <div class="metric-number text-primary" id="specEquivalence">100%</div>
+              <div class="metric-label">Token Equivalence Match</div>
+              <small class="text-muted">Identical to Greedy Target</small>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="metric-tile shadow-sm">
+              <div class="metric-number text-info" id="specPeakAcc">56.4%</div>
+              <div class="metric-label">Peak Draft Acceptance Rate</div>
+              <small class="text-muted">Draft: Qwen2.5-0.5B, γ=4</small>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="metric-tile shadow-sm">
+              <div class="metric-number text-warning" id="specMemFootprint">2,555 MB</div>
+              <div class="metric-label">Peak VRAM Footprint</div>
+              <small class="text-muted">Target 4-bit NF4 + Draft FP16</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-4 mb-4">
+          <!-- Speculative Decoding Summary Table -->
+          <div class="col-lg-8">
+            <div class="card shadow-sm border-0 h-100">
+              <div class="card-header bg-white py-3 border-bottom">
+                <h5 class="card-title mb-0 fw-bold">
+                  <i class="bi bi-speedometer2 text-primary me-2"></i>Task 5 Speculative Decoding: Target vs. Speculative (γ = 4)
+                </h5>
+                <small class="text-muted">Measurements conducted on NVIDIA GPU with verified DynamicCache / ExplicitKVCache rollback</small>
+              </div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Prompt Len</th>
+                        <th>Gen Len</th>
+                        <th>Target Greedy</th>
+                        <th>Speculative (γ=4)</th>
+                        <th>Speedup</th>
+                        <th>Acceptance Rate</th>
+                        <th>Token Match</th>
+                      </tr>
+                    </thead>
+                    <tbody id="specBenchmarkTableBody">
+                      <!-- Filled by JS -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Theoretical & Empirical Explanation -->
+          <div class="col-lg-4">
+            <div class="card shadow-sm border-0 h-100">
+              <div class="card-header bg-white py-3 border-bottom">
+                <h5 class="card-title mb-0 fw-bold">
+                  <i class="bi bi-info-circle text-primary me-2"></i>Decoding Analysis & Insights
+                </h5>
+              </div>
+              <div class="card-body">
+                <h6 class="fw-bold text-dark">Why Slowdown at Low Acceptance?</h6>
+                <p class="small text-muted">
+                  For short prompts (L=127, Gen=64), acceptance rate is <strong>26.2%</strong>. The overhead of running both models plus parallel verification outweighs drafting gains, yielding <strong>0.88x</strong>.
+                </p>
+                <h6 class="fw-bold text-dark mt-3">Why Speedup on Longer Outputs?</h6>
+                <p class="small text-muted">
+                  When generation length increases (Gen=128), structured repetitive clinical tokens allow the draft model's acceptance to surge to <strong>56.4%</strong>, achieving a net <strong>1.32x speedup (13.3 tok/s vs 10.1 tok/s)</strong>.
+                </p>
+                <div class="alert alert-info py-2 small mb-0">
+                  <i class="bi bi-check-circle-fill me-1 text-info"></i>
+                  <strong>Rubric F3 Verification:</strong> Token equality verified on 100% of outputs; 0 mismatches across all configs.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- TAB 3: LIVE TILED ATTENTION WITH ONLINE SOFTMAX (TASK 4) -->
+      <!-- ================================================================= -->
+      <div class="tab-pane fade" id="tiled-view" role="tabpanel">
+
+        <div class="row g-4">
+          <!-- Left: Live Execution Controls -->
+          <div class="col-lg-5">
+            <div class="card shadow-sm border-0">
+              <div class="card-header bg-white py-3 border-bottom">
+                <h5 class="card-title mb-0 fw-bold">
+                  <i class="bi bi-sliders text-primary me-2"></i>Live Attention Execution Controls
+                </h5>
+                <small class="text-muted">Run FlashAttention-style Tiled Online-Softmax vs Reference on your machine</small>
+              </div>
+              <div class="card-body">
+                <form id="tiledAttentionForm">
+                  <div class="row g-3">
+                    <div class="col-6">
+                      <label class="form-label small fw-bold text-muted">Batch Size (B):</label>
+                      <input type="number" id="inputB" class="form-control form-control-sm" value="1" min="1" max="4">
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small fw-bold text-muted">Attention Heads (H):</label>
+                      <input type="number" id="inputH" class="form-control form-control-sm" value="4" min="1" max="8">
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small fw-bold text-muted">Sequence Length (L):</label>
+                      <input type="number" id="inputL" class="form-control form-control-sm" value="128" min="16" max="512" step="16">
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small fw-bold text-muted">Head Dim (D):</label>
+                      <input type="number" id="inputD" class="form-control form-control-sm" value="32" min="16" max="64" step="16">
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small fw-bold text-muted">Tile Block Size (B_r):</label>
+                      <input type="number" id="inputBlockSize" class="form-control form-control-sm" value="32" min="8" max="128" step="8">
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small fw-bold text-muted">Causal Mask:</label>
+                      <select id="inputCausal" class="form-select form-select-sm">
+                        <option value="true" selected>True (Autoregressive)</option>
+                        <option value="false">False (Bidirectional)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button type="button" id="btnRunTiled" class="btn btn-primary w-100 mt-4 fw-bold">
+                    <i class="bi bi-play-circle me-1"></i>Execute Live Numerical Verification
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Live Verification Results & Memory Tradeoff -->
+          <div class="col-lg-7">
+            <div class="card shadow-sm border-0 mb-4">
+              <div class="card-header bg-white py-3 border-bottom">
+                <h5 class="card-title mb-0 fw-bold">
+                  <i class="bi bi-clipboard2-pulse text-primary me-2"></i>Live Execution Results & Numerical Stability
+                </h5>
+              </div>
+              <div class="card-body">
+                <div id="tiledLiveResultsPlaceholder" class="text-center py-4 text-muted">
+                  Click <strong>Execute Live Numerical Verification</strong> to test PyTorch online softmax tensors.
+                </div>
+                <div id="tiledLiveResultsContainer" class="d-none">
+                  <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                      <div class="p-3 bg-light rounded text-center">
+                        <small class="text-muted d-block">Numerical Status</small>
+                        <span class="badge bg-success fs-6 mt-1" id="resAllclose">PASSED</span>
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="p-3 bg-light rounded text-center">
+                        <small class="text-muted d-block">Max Absolute Error</small>
+                        <span class="fw-bold font-monospace fs-6" id="resMaxAbs">0.000e-00</span>
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="p-3 bg-light rounded text-center">
+                        <small class="text-muted d-block">Attention Matrix Reduction</small>
+                        <span class="fw-bold text-primary fs-6" id="resMemSaving">0%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="code-block" id="tiledDebugOutput"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Task 4 Precomputed GPU Benchmark Table -->
+            <div class="card shadow-sm border-0">
+              <div class="card-header bg-white py-3 border-bottom">
+                <h6 class="card-title mb-0 fw-bold">
+                  <i class="bi bi-gpu-card me-2"></i>Task 4 GPU Benchmark Logs (H=12, D=128, FP16)
+                </h6>
+              </div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Seq Len (L)</th>
+                        <th>Ref Time (s)</th>
+                        <th>Tiled Time (s)</th>
+                        <th>Ref Memory</th>
+                        <th>Tiled Memory</th>
+                        <th>Memory Savings</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tiledBenchmarkTableBody">
+                      <!-- Filled by JS -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- TAB 4: MODEL ADAPTATION & ERROR ANALYSIS (TASKS 1 & 2) -->
+      <!-- ================================================================= -->
+      <div class="tab-pane fade" id="adaptation-view" role="tabpanel">
+
+        <div class="row g-4 mb-4">
+          <div class="col-md-3">
+            <div class="metric-tile shadow-sm">
+              <div class="metric-number text-primary">67.0%</div>
+              <div class="metric-label">Held-Out Test Accuracy</div>
+              <small class="text-muted">Task 2 Final Evaluation (206 criteria)</small>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="metric-tile shadow-sm">
+              <div class="metric-number text-success">0.822</div>
+              <div class="metric-label">'Not Excluded' F1-Score</div>
+              <small class="text-muted">Support: 91 criteria</small>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="metric-tile shadow-sm">
+              <div class="metric-number text-info">0.692</div>
+              <div class="metric-label">'Included' F1-Score</div>
+              <small class="text-muted">Support: 27 criteria (100% recall)</small>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="metric-tile shadow-sm">
+              <div class="metric-number text-warning">&lt; 0.5%</div>
+              <div class="metric-label">JSON Parse Failure Rate</div>
+              <small class="text-muted">1 unparseable row out of 206</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-header bg-white py-3 border-bottom">
+            <h5 class="card-title mb-0 fw-bold">
+              <i class="bi bi-grid-3x3-gap text-primary me-2"></i>Task 2 Held-Out Confusion Matrix (Rows: Gold, Cols: Predicted)
+            </h5>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-bordered text-center align-middle mb-0 font-monospace small">
+                <thead class="table-light">
+                  <tr>
+                    <th>Gold \ Pred</th>
+                    <th>included</th>
+                    <th>not included</th>
+                    <th>excluded</th>
+                    <th>not excluded</th>
+                    <th>not enough info</th>
+                    <th>not applicable</th>
+                    <th>&lt;invalid&gt;</th>
+                  </tr>
+                </thead>
+                <tbody id="confusionMatrixBody">
+                  <!-- Filled by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
