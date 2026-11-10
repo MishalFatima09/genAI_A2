@@ -197,18 +197,10 @@ def speculative_decode(
                 if correct_token.item() == tokenizer.eos_token_id:
                     break
             else:
-                # All γ accepted: run target on last token to get fresh logits + cache
-                last_token = generated[:, -1:]
-                target_out = target_model(
-                    input_ids=last_token,
-                    use_cache=True,
-                    past_key_values=target_pkv,
-                )
-                target_pkv = target_out.past_key_values
-                # Sync draft cache to target (they should match after full acceptance)
-                draft_pkv = target_pkv
-                # Use target's output for next draft round
-                draft_out = target_out
+                # All γ accepted: both caches already at correct position (after γ tokens)
+                # draft_out already has logits for next token; target_pkv already updated by verification
+                # Just continue - no extra forward pass needed
+                pass
 
         decode_time = time.perf_counter() - decode_start
 
