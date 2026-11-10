@@ -233,10 +233,16 @@ def run_benchmark(
 # ExplicitKVCache for Task 5 Speculative Decoding
 # ============================================================================
 
-class ExplicitKVCache:
+try:
+    from transformers.cache_utils import Cache as _HFBaseCache
+except ImportError:
+    _HFBaseCache = object
+
+
+class ExplicitKVCache(_HFBaseCache):
     """Explicit KV cache with crop/rollback capability for speculative decoding.
     
-    Implements the DynamicCache interface expected by transformers models.
+    Implements the DynamicCache / Cache interface expected by transformers models.
     """
     
     def __init__(self):
@@ -247,15 +253,44 @@ class ExplicitKVCache:
     def __len__(self):
         return len(self.key_cache)
     
-    def get_seq_length(self) -> int:
+    def __iter__(self):
+        for i in range(len(self.key_cache)):
+            yield (self.key_cache[i], self.value_cache[i])
+
+    def __getitem__(self, layer_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        if layer_idx < len(self.key_cache):
+            return (self.key_cache[layer_idx], self.value_cache[layer_idx])
+        raise KeyError(f"Cache only has {len(self.key_cache)} layers, attempted to access layer {layer_idx}")
+
+    def get_seq_length(self, layer_idx: Optional[int] = 0) -> int:
+        if layer_idx is None:
+            layer_idx = 0
+        if len(self.key_cache) > layer_idx and self.key_cache[layer_idx].numel() > 0:
+            return self.key_cache[layer_idx].shape[-2]
         return self._seen_tokens
     
     def get_query_offset(self, layer_idx: int = 0) -> int:
         """Get query offset for causal masking."""
-        return self._seen_tokens
+        return self.get_seq_length(layer_idx)
     
     def get_max_cache_shape(self) -> Optional[Tuple[int, int]]:
         return None
+
+    def get_max_length(self) -> Optional[int]:
+        return None
+
+    def get_usable_length(self, new_seq_length: int, layer_idx: Optional[int] = 0) -> int:
+        return self.get_seq_length(layer_idx)
+
+    def get_mask_sizes(self, cache_position: Any, layer_idx: int = 0) -> Tuple[int, int]:
+        """Return (kv_length, kv_offset) for causal mask creation in transformers."""
+        kv_offset = 0
+        if isinstance(cache_position, torch.Tensor):
+            query_length = int(cache_position.shape[0])
+        else:
+            query_length = int(cache_position)
+        kv_length = self.get_seq_length(layer_idx) + query_length
+        return kv_length, kv_offset
     
     def update(
         self,
@@ -265,6 +300,9 @@ class ExplicitKVCache:
         cache_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Update cache for a specific layer."""
+        if layer_idx == 0:
+            self._seen_tokens += key_states.shape[-2]
+
         # Extend layer lists if needed
         while len(self.key_cache) <= layer_idx:
             self.key_cache.append(torch.empty(0))
@@ -283,12 +321,21 @@ class ExplicitKVCache:
     
     def crop(self, new_seq_len: int):
         """Crop cache to new_seq_len (keep prefix)."""
+        if new_seq_len < 0:
+            new_seq_len = self.get_seq_length(0) + new_seq_len
         for layer_idx in range(len(self.key_cache)):
             if self.key_cache[layer_idx].numel() > 0:
                 self.key_cache[layer_idx] = self.key_cache[layer_idx][:, :, :new_seq_len, :]
                 self.value_cache[layer_idx] = self.value_cache[layer_idx][:, :, :new_seq_len, :]
         self._seen_tokens = new_seq_len
     
+    def batch_repeat_interleave(self, repeats: int):
+        """Repeat cache tensors across batch dimension."""
+        for layer_idx in range(len(self.key_cache)):
+            if self.key_cache[layer_idx].numel() > 0:
+                self.key_cache[layer_idx] = self.key_cache[layer_idx].repeat_interleave(repeats, dim=0)
+                self.value_cache[layer_idx] = self.value_cache[layer_idx].repeat_interleave(repeats, dim=0)
+
     def reorder_cache(self, beam_idx: torch.Tensor):
         """Reorder cache for beam search (no-op for greedy)."""
         for layer_idx in range(len(self.key_cache)):
@@ -304,14 +351,15 @@ class ExplicitKVCache:
         )
     
     @classmethod
-    def from_legacy_cache(cls, legacy_cache: Tuple[Tuple[torch.Tensor, torch.Tensor], ...]) -> "ExplicitKVCache":
+    def from_legacy_cache(cls, legacy_cache: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None) -> "ExplicitKVCache":
         """Create ExplicitKVCache from legacy tuple format."""
         cache = cls()
-        for i, (k, v) in enumerate(legacy_cache):
-            cache.key_cache.append(k)
-            cache.value_cache.append(v)
-        if cache.key_cache:
-            cache._seen_tokens = cache.key_cache[0].shape[-2]
+        if legacy_cache is not None:
+            for i, (k, v) in enumerate(legacy_cache):
+                cache.key_cache.append(k)
+                cache.value_cache.append(v)
+            if cache.key_cache and cache.key_cache[0].numel() > 0:
+                cache._seen_tokens = cache.key_cache[0].shape[-2]
         return cache
 
 

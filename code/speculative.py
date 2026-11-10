@@ -415,7 +415,15 @@ def verify_token_equality(
         input_ids = tokenizer(prompt, return_tensors="pt", add_special_tokens=False).input_ids.to(device)
 
         greedy_tokens, _, _, _ = greedy_decode(target_model, tokenizer, input_ids, max_new_tokens, device)
-        spec_result = speculative_decode(draft_model, target_model, tokenizer, input_ids, max_new_tokens, gamma, device)
+        spec_result = speculative_decode(
+            target_model=target_model,
+            draft_model=draft_model,
+            tokenizer=tokenizer,
+            input_ids=input_ids,
+            max_new_tokens=max_new_tokens,
+            gamma=gamma,
+            device=device,
+        )
 
         match = greedy_tokens == spec_result.tokens
         results["matches" if match else "mismatches"] += 1
@@ -453,7 +461,7 @@ def run_benchmark(
         device = "cpu"
 
     dtype = torch.float16 if device == "cuda" else torch.float32
-    draft, target, tokenizer = load_models(target_path, base_model, draft_name, device)
+    target, draft, tokenizer = load_models(target_path, base_model, draft_name, device)
 
     # Generate test prompts
     base_prompt = (
@@ -495,12 +503,28 @@ def run_benchmark(
             # Warmup
             for _ in range(warmup):
                 _ = greedy_decode(target, tokenizer, input_ids, glen, device)
-                _ = speculative_decode(draft, target, tokenizer, input_ids, glen, gamma, device)
+                _ = speculative_decode(
+                    target_model=target,
+                    draft_model=draft,
+                    tokenizer=tokenizer,
+                    input_ids=input_ids,
+                    max_new_tokens=glen,
+                    gamma=gamma,
+                    device=device,
+                )
 
             # Timed runs
             for _ in range(n_repeats):
                 g_tokens, g_prefill, g_decode, g_mem = greedy_decode(target, tokenizer, input_ids, glen, device)
-                s_result = speculative_decode(draft, target, tokenizer, input_ids, glen, gamma, device)
+                s_result = speculative_decode(
+                    target_model=target,
+                    draft_model=draft,
+                    tokenizer=tokenizer,
+                    input_ids=input_ids,
+                    max_new_tokens=glen,
+                    gamma=gamma,
+                    device=device,
+                )
 
                 config_result["greedy"]["prefill_s"].append(g_prefill)
                 config_result["greedy"]["decode_s"].append(g_decode)
@@ -536,6 +560,20 @@ def run_benchmark(
                   f"spec={config_result['speculative']['tokens_s_mean']:.1f} tok/s | "
                   f"acc={config_result['speculative']['acceptance_rate_mean']:.2%} | "
                   f"match={eq['details'][0]['match']}")
+
+    # Extended correctness check reusing already-loaded models
+    print("\n[verify] Extended correctness check...")
+    test_prompts = [
+        "Patient record:\n0. 65-year-old female with diabetes.\n1. HbA1c 7.2%.\n\nCriterion type: exclusion\nCriterion: HbA1c > 8%\n\nReturn the JSON decision.",
+        "Patient record:\n0. 30-year-old male.\n1. No medical history.\n2. BMI 24.\n\nCriterion type: inclusion\nCriterion: Age 18-65\n\nReturn the JSON decision.",
+    ]
+    eq = verify_token_equality(draft, target, tokenizer, test_prompts, 64, gamma, device)
+    all_results["extended_correctness"] = {
+        "matches": eq["matches"],
+        "mismatches": eq["mismatches"],
+        "details": eq["details"],
+    }
+    print(f"  Matches: {eq['matches']}, Mismatches: {eq['mismatches']}")
 
     return all_results
 
@@ -573,23 +611,6 @@ if __name__ == "__main__":
         warmup=args.warmup,
     )
 
-    # Extended correctness
-    print("\n[verify] Extended correctness check...")
-    dtype = torch.float16 if device == "cuda" else torch.float32
-    draft, target, tokenizer = load_models(args.target, args.base, args.draft, device)
-
-    test_prompts = [
-        "Patient record:\n0. 65-year-old female with diabetes.\n1. HbA1c 7.2%.\n\nCriterion type: exclusion\nCriterion: HbA1c > 8%\n\nReturn the JSON decision.",
-        "Patient record:\n0. 30-year-old male.\n1. No medical history.\n2. BMI 24.\n\nCriterion type: inclusion\nCriterion: Age 18-65\n\nReturn the JSON decision.",
-    ]
-    eq = verify_token_equality(draft, target, tokenizer, test_prompts, 64, args.gamma, device)
-    results["extended_correctness"] = {
-        "matches": eq["matches"],
-        "mismatches": eq["mismatches"],
-        "details": eq["details"],
-    }
-    print(f"  Matches: {eq['matches']}, Mismatches: {eq['mismatches']}")
-
     Path(args.out).parent.mkdir(exist_ok=True)
     Path(args.out).write_text(json.dumps(results, indent=2))
     print(f"\n[saved] {args.out}")
@@ -597,7 +618,7 @@ if __name__ == "__main__":
     # Summary
     print("\n=== SUMMARY ===")
     for c in results["configs"]:
-        speedup = c["greedy"]["tokens_s_mean"] / c["speculative"]["tokens_s_mean"] if c["speculative"]["tokens_s_mean"] else 0
+        speedup = c["speculative"]["tokens_s_mean"] / c["greedy"]["tokens_s_mean"] if c["greedy"]["tokens_s_mean"] else 0
         print(f"  plen={c['prompt_len']:4d} glen={c['gen_len']:3d} | "
               f"greedy={c['greedy']['tokens_s_mean']:6.1f} tok/s | "
               f"spec={c['speculative']['tokens_s_mean']:6.1f} tok/s | "

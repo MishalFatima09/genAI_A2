@@ -57,7 +57,7 @@ def main() -> None:
     # Summary
     print("\n=== SUMMARY ===")
     for c in results["configs"]:
-        speedup = c["greedy"]["tokens_s_mean"] / c["speculative"]["tokens_s_mean"] if c["speculative"]["tokens_s_mean"] else 0
+        speedup = c["speculative"]["tokens_s_mean"] / c["greedy"]["tokens_s_mean"] if c["greedy"]["tokens_s_mean"] else 0
         print(f"  plen={c['prompt_len']:4d} glen={c['gen_len']:3d} | "
               f"greedy={c['greedy']['tokens_s_mean']:6.1f} tok/s | "
               f"spec={c['speculative']['tokens_s_mean']:6.1f} tok/s | "
