@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -236,8 +236,7 @@ def run_benchmark(
 class ExplicitKVCache:
     """Explicit KV cache with crop/rollback capability for speculative decoding.
     
-    Wraps transformers DynamicCache and provides explicit length tracking
-    and cropping functionality.
+    Implements the DynamicCache interface expected by transformers models.
     """
     
     def __init__(self):
@@ -251,11 +250,19 @@ class ExplicitKVCache:
     def get_seq_length(self) -> int:
         return self._seen_tokens
     
+    def get_query_offset(self, layer_idx: int = 0) -> int:
+        """Get query offset for causal masking."""
+        return self._seen_tokens
+    
+    def get_max_cache_shape(self) -> Optional[Tuple[int, int]]:
+        return None
+    
     def update(
         self,
         key_states: torch.Tensor,
         value_states: torch.Tensor,
         layer_idx: int,
+        cache_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Update cache for a specific layer."""
         # Extend layer lists if needed
@@ -282,8 +289,30 @@ class ExplicitKVCache:
                 self.value_cache[layer_idx] = self.value_cache[layer_idx][:, :, :new_seq_len, :]
         self._seen_tokens = new_seq_len
     
-    def get_seq_length(self) -> int:
-        return self._seen_tokens
+    def reorder_cache(self, beam_idx: torch.Tensor):
+        """Reorder cache for beam search (no-op for greedy)."""
+        for layer_idx in range(len(self.key_cache)):
+            if self.key_cache[layer_idx].numel() > 0:
+                self.key_cache[layer_idx] = self.key_cache[layer_idx].index_select(0, beam_idx.to(self.key_cache[layer_idx].device))
+                self.value_cache[layer_idx] = self.value_cache[layer_idx].index_select(0, beam_idx.to(self.value_cache[layer_idx].device))
+    
+    def to_legacy_cache(self) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+        """Convert to legacy tuple format."""
+        return tuple(
+            (self.key_cache[i], self.value_cache[i]) 
+            for i in range(len(self.key_cache))
+        )
+    
+    @classmethod
+    def from_legacy_cache(cls, legacy_cache: Tuple[Tuple[torch.Tensor, torch.Tensor], ...]) -> "ExplicitKVCache":
+        """Create ExplicitKVCache from legacy tuple format."""
+        cache = cls()
+        for i, (k, v) in enumerate(legacy_cache):
+            cache.key_cache.append(k)
+            cache.value_cache.append(v)
+        if cache.key_cache:
+            cache._seen_tokens = cache.key_cache[0].shape[-2]
+        return cache
 
 
 def generate_with_kv_cache(
