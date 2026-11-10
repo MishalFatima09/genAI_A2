@@ -205,6 +205,8 @@ def speculative_decode(
                     past_key_values=target_pkv,
                 )
                 target_pkv = target_out.past_key_values
+                # Sync draft cache to target (they should match after full acceptance)
+                draft_pkv = target_pkv
                 # Use target's output for next draft round
                 draft_out = target_out
 
