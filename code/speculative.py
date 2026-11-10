@@ -361,12 +361,14 @@ def run_benchmark(
 
             # Aggregate
             for method in ["greedy", "speculative"]:
-                for key in ["prefill_s", "decode_s", "tokens_s", "peak_mem_mb"]:
-                    vals = config_result[method][key]
-                    config_result[method][f"{key}_mean"] = round(sum(vals) / len(vals), 4)
-                    config_result[method][f"{key}_std"] = round(
-                        (sum((v - config_result[method][f"{key}_mean"])**2 for v in vals) / len(vals))**0.5, 4
-                    )
+                for key in ["prefill_s", "decode_s", "tokens_s", "peak_mem_mb",
+                           "acceptance_rate", "n_drafted", "n_accepted"]:
+                    if key in config_result[method]:
+                        vals = config_result[method][key]
+                        config_result[method][f"{key}_mean"] = round(sum(vals) / len(vals), 4)
+                        config_result[method][f"{key}_std"] = round(
+                            (sum((v - config_result[method][f"{key}_mean"])**2 for v in vals) / len(vals))**0.5, 4
+                        )
 
             # Correctness check
             eq = verify_token_equality(draft, target, tokenizer, [prompt], glen, gamma, device)
