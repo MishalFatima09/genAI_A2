@@ -228,43 +228,40 @@ def speculative_decode(
 def _truncate_kv_cache(past_key_values, new_seq_len: int):
     """Truncate KV cache to new_seq_len (keep prefix).
 
-    Uses DynamicCache to preserve cache class methods (get_seq_length, etc.).
+    Convert to legacy tuple format, truncate, convert back to DynamicCache.
+    This works across all transformers versions.
     """
     if past_key_values is None:
         return None
     
-    # Convert to DynamicCache if it's a tuple
+    # Convert to legacy tuple format (list of (key, value) per layer)
     if isinstance(past_key_values, tuple):
-        cache = DynamicCache.from_legacy_cache(past_key_values)
+        legacy = past_key_values
+    elif hasattr(past_key_values, 'to_legacy_cache'):
+        legacy = past_key_values.to_legacy_cache()
+    elif hasattr(past_key_values, 'key_cache') and hasattr(past_key_values, 'value_cache'):
+        # Build legacy from key_cache/value_cache
+        legacy = tuple(
+            (past_key_values.key_cache[i], past_key_values.value_cache[i])
+            for i in range(len(past_key_values.key_cache))
+        )
+    elif hasattr(past_key_values, 'keys') and hasattr(past_key_values, 'values'):
+        legacy = tuple(
+            (past_key_values.keys[i], past_key_values.values[i])
+            for i in range(len(past_key_values.keys))
+        )
     else:
-        cache = past_key_values
+        # Last resort: assume it's already a tuple-like
+        legacy = past_key_values
     
-    # DynamicCache API - use the proper attributes
-    # Most versions have .key_cache and .value_cache as lists
-    if hasattr(cache, 'key_cache') and hasattr(cache, 'value_cache'):
-        for layer_idx in range(len(cache.key_cache)):
-            cache.key_cache[layer_idx] = cache.key_cache[layer_idx][:, :, :new_seq_len, :]
-            cache.value_cache[layer_idx] = cache.value_cache[layer_idx][:, :, :new_seq_len, :]
-    elif hasattr(cache, 'keys') and hasattr(cache, 'values'):
-        for layer_idx in range(len(cache.keys)):
-            cache.keys[layer_idx] = cache.keys[layer_idx][:, :, :new_seq_len, :]
-            cache.values[layer_idx] = cache.values[layer_idx][:, :, :new_seq_len, :]
-    else:
-        # Fallback: convert to legacy tuple, truncate, convert back
-        legacy = cache.to_legacy_cache()
-        truncated = []
-        for layer_kv in legacy:
-            k, v = layer_kv[0], layer_kv[1]
-            truncated.append((k[:, :, :new_seq_len, :], v[:, :, :new_seq_len, :]))
-        cache = DynamicCache.from_legacy_cache(tuple(truncated))
+    # Truncate each layer in legacy format
+    truncated = []
+    for layer_kv in legacy:
+        k, v = layer_kv[0], layer_kv[1]
+        truncated.append((k[:, :, :new_seq_len, :], v[:, :, :new_seq_len, :]))
     
-    # Update seen tokens
-    if hasattr(cache, '_seen_tokens'):
-        cache._seen_tokens = new_seq_len
-    elif hasattr(cache, 'seen_tokens'):
-        cache.seen_tokens = new_seq_len
-    
-    return cache
+    # Convert back to DynamicCache
+    return DynamicCache.from_legacy_cache(tuple(truncated))
 
 
 def verify_token_equality(
