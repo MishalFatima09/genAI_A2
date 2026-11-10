@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 # Ensure project root is in sys.path
 import sys
@@ -43,6 +43,18 @@ class SpeculativeResult:
     step_details: List[Dict[str, Any]] = field(default_factory=list)
 
 
+def _get_quantization_config(device: str, load_in_4bit: bool = True):
+    """Get BitsAndBytesConfig for 4-bit quantization."""
+    if device == "cuda" and load_in_4bit:
+        return BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+        )
+    return None
+
+
 def load_models(
     target_path: str,
     base_model: str = BASE_MODEL_ID,
@@ -65,10 +77,14 @@ def load_models(
     assert target_tokenizer.eos_token_id == draft_tokenizer.eos_token_id, "EOS token mismatch"
     assert target_tokenizer.pad_token_id == draft_tokenizer.pad_token_id, "PAD token mismatch"
 
+    # Quantization configs
+    target_quant_config = _get_quantization_config(device, load_in_4bit=True)
+    draft_quant_config = _get_quantization_config(device, load_in_4bit=draft_in_4bit)
+
     # Load target model (base + LoRA)
     target_model = AutoModelForCausalLM.from_pretrained(
         base_model,
-        load_in_4bit=(device == "cuda"),
+        quantization_config=target_quant_config,
         torch_dtype=compute_dtype,
         device_map={"": device} if device == "cuda" else None,
         trust_remote_code=True,
@@ -87,7 +103,7 @@ def load_models(
     # Load draft model
     draft_model = AutoModelForCausalLM.from_pretrained(
         draft_name,
-        load_in_4bit=(draft_in_4bit and device == "cuda"),
+        quantization_config=draft_quant_config,
         torch_dtype=compute_dtype,
         device_map={"": device} if device == "cuda" else None,
         trust_remote_code=True,
