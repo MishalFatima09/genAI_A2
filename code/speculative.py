@@ -217,14 +217,25 @@ def speculative_decode(
 
 
 def _truncate_kv_cache(past_key_values, new_seq_len: int):
-    """Truncate KV cache to new_seq_len (keep prefix)."""
+    """Truncate KV cache to new_seq_len (keep prefix).
+
+    Handles different KV cache formats:
+    - Standard: tuple of (key, value) per layer
+    - Some models: tuple of (key, value, ...) per layer
+    """
     if past_key_values is None:
         return None
-    # past_key_values: tuple of layers, each (K, V) with shape (B, H, L, D)
     truncated = []
     for layer_kv in past_key_values:
-        k, v = layer_kv
-        truncated.append((k[:, :, :new_seq_len, :], v[:, :, :new_seq_len, :]))
+        # layer_kv is typically (key, value) but could have more
+        # Key and value are at indices 0 and 1
+        k = layer_kv[0][:, :, :new_seq_len, :]
+        v = layer_kv[1][:, :, :new_seq_len, :]
+        # Preserve any additional elements (e.g., for some attention variants)
+        if len(layer_kv) > 2:
+            truncated.append((k, v) + layer_kv[2:])
+        else:
+            truncated.append((k, v))
     return tuple(truncated)
 
 
