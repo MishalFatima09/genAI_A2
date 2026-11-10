@@ -1,0 +1,141 @@
+{
+  "verification": {
+    "verifications": [
+      {
+        "passed": false,
+        "max_abs_diff": 2.980232238769531e-07,
+        "mean_abs_diff": 2.6113362139312812e-08,
+        "max_rel_diff": 0.00031050655525177717,
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "config": {
+          "B": 1,
+          "H": 4,
+          "L": 64,
+          "D": 32,
+          "block_size": 16,
+          "causal": true
+        }
+      },
+      {
+        "passed": false,
+        "max_abs_diff": 5.960464477539062e-07,
+        "mean_abs_diff": 2.5827961991353732e-08,
+        "max_rel_diff": 0.0074765621684491634,
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "config": {
+          "B": 2,
+          "H": 8,
+          "L": 128,
+          "D": 64,
+          "block_size": 32,
+          "causal": true
+        }
+      },
+      {
+        "passed": false,
+        "max_abs_diff": 5.364418029785156e-07,
+        "mean_abs_diff": 2.5791614177705924e-08,
+        "max_rel_diff": 0.058513034135103226,
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "config": {
+          "B": 1,
+          "H": 4,
+          "L": 256,
+          "D": 64,
+          "block_size": 64,
+          "causal": true
+        }
+      },
+      {
+        "passed": false,
+        "max_abs_diff": 2.682209014892578e-07,
+        "mean_abs_diff": 2.4751335203632152e-08,
+        "max_rel_diff": 0.007477384526282549,
+        "atol": 0.0001,
+        "rtol": 0.0001,
+        "config": {
+          "B": 1,
+          "H": 4,
+          "L": 128,
+          "D": 64,
+          "block_size": 32,
+          "causal": false
+        }
+      }
+    ]
+  },
+  "benchmarks": [
+    {
+      "config": {
+        "B": 1,
+        "H": 12,
+        "L": 512,
+        "D": 128,
+        "block_size": 64,
+        "causal": true,
+        "dtype": "torch.float16"
+      },
+      "reference": {
+        "mean_s": 0.0009794858999839563,
+        "std_s": 0.00037700189183427084,
+        "peak_mem_mb": 33.972224
+      },
+      "tiled": {
+        "mean_s": 0.023114885799964215,
+        "std_s": 0.0011722954352704604,
+        "peak_mem_mb": 16.814592
+      },
+      "speedup": 0.04237468047475591,
+      "mem_ratio": 0.4949511695201351
+    },
+    {
+      "config": {
+        "B": 1,
+        "H": 12,
+        "L": 1024,
+        "D": 128,
+        "block_size": 64,
+        "causal": true,
+        "dtype": "torch.float16"
+      },
+      "reference": {
+        "mean_s": 0.0032521975000236124,
+        "std_s": 0.0021290959884769757,
+        "peak_mem_mb": 97.697792
+      },
+      "tiled": {
+        "mean_s": 0.08861047330001384,
+        "std_s": 0.0008082827001338866,
+        "peak_mem_mb": 24.703488
+      },
+      "speedup": 0.03670217953821836,
+      "mem_ratio": 0.25285615462015765
+    },
+    {
+      "config": {
+        "B": 1,
+        "H": 12,
+        "L": 2048,
+        "D": 128,
+        "block_size": 128,
+        "causal": true,
+        "dtype": "torch.float16"
+      },
+      "reference": {
+        "mean_s": 0.01166902569996182,
+        "std_s": 0.007841012607596134,
+        "peak_mem_mb": 339.968
+      },
+      "tiled": {
+        "mean_s": 0.0877156555000056,
+        "std_s": 0.0011408766596719849,
+        "peak_mem_mb": 41.288704
+      },
+      "speedup": 0.13303241745666572,
+      "mem_ratio": 0.1214487951807229
+    }
+  ]
+}
