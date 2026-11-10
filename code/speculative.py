@@ -239,13 +239,29 @@ def _truncate_kv_cache(past_key_values, new_seq_len: int):
     else:
         cache = past_key_values
     
-    # Truncate each layer
-    for layer_idx in range(len(cache.key_cache)):
-        cache.key_cache[layer_idx] = cache.key_cache[layer_idx][:, :, :new_seq_len, :]
-        cache.value_cache[layer_idx] = cache.value_cache[layer_idx][:, :, :new_seq_len, :]
+    # DynamicCache stores keys/values as list of tensors per layer
+    # API varies by transformers version - handle both
+    if hasattr(cache, 'key_cache'):
+        # Newer API
+        for layer_idx in range(len(cache.key_cache)):
+            cache.key_cache[layer_idx] = cache.key_cache[layer_idx][:, :, :new_seq_len, :]
+            cache.value_cache[layer_idx] = cache.value_cache[layer_idx][:, :, :new_seq_len, :]
+    elif hasattr(cache, 'keys'):
+        # Older API
+        for layer_idx in range(len(cache.keys)):
+            cache.keys[layer_idx] = cache.keys[layer_idx][:, :, :new_seq_len, :]
+            cache.values[layer_idx] = cache.values[layer_idx][:, :, :new_seq_len, :]
+    else:
+        # Fallback: try to access as list
+        for layer_idx in range(len(cache)):
+            cache[layer_idx][0] = cache[layer_idx][0][:, :, :new_seq_len, :]
+            cache[layer_idx][1] = cache[layer_idx][1][:, :, :new_seq_len, :]
     
     # Update seen tokens
-    cache._seen_tokens = new_seq_len
+    if hasattr(cache, '_seen_tokens'):
+        cache._seen_tokens = new_seq_len
+    elif hasattr(cache, 'seen_tokens'):
+        cache.seen_tokens = new_seq_len
     
     return cache
 
