@@ -50,8 +50,12 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.base)
     tokenizer.pad_token = tokenizer.eos_token
     import transformers
+    from peft import PeftModel
     kw = "dtype" if int(transformers.__version__.split(".")[0]) >= 5 else "torch_dtype"
-    model = AutoModelForCausalLM.from_pretrained(args.model, **{kw: torch.float16}, device_map=device)
+    compute_dtype = torch.float16 if device == "cuda" else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(args.base, **{kw: compute_dtype}, device_map={"": device} if device == "cuda" else None)
+    if Path(args.model).is_dir():
+        model = PeftModel.from_pretrained(model, args.model, torch_dtype=compute_dtype, device_map={"": device} if device == "cuda" else None)
     model.eval()
 
     test_prompts = [
@@ -74,7 +78,7 @@ def main() -> None:
     # Summary
     print("\n=== SUMMARY ===")
     for c in results["configs"]:
-        speedup = c["uncached"]["tokens_s_mean"] / c["cached"]["tokens_s_mean"] if c["cached"]["tokens_s_mean"] else 0
+        speedup = c["cached"]["tokens_s_mean"] / c["uncached"]["tokens_s_mean"] if c["uncached"]["tokens_s_mean"] else 0
         print(f"  plen={c['prompt_len']:4d} glen={c['gen_len']:3d} | "
               f"cached={c['cached']['tokens_s_mean']:6.1f} tok/s | "
               f"uncached={c['uncached']['tokens_s_mean']:6.1f} tok/s | "

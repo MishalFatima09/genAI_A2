@@ -67,36 +67,63 @@ def decode_with_cache(
     max_new_tokens: int,
     device: str,
 ) -> DecodeResult:
-    """KV-cache aware: prefill once, then feed only last token + past_key_values."""
+    """KV-cache aware: prefill once with ExplicitKVCache, then step autoregressively with explicit position IDs and mask."""
     model.eval()
-    torch.cuda.reset_peak_memory_stats(device) if device == "cuda" else None
+    if device == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
 
+    prompt_len = input_ids.shape[1]
     generated = input_ids.clone()
+    cache = ExplicitKVCache()
+
+    pos_ids_prefill = torch.arange(0, prompt_len, dtype=torch.long, device=device).unsqueeze(0)
+    cache_pos_prefill = torch.arange(0, prompt_len, dtype=torch.long, device=device)
+    mask_prefill = torch.ones_like(input_ids, device=device)
+
     prefill_start = time.perf_counter()
-
     with torch.no_grad():
-        # Prefill: full sequence, get past_key_values
-        out = model(input_ids=generated, use_cache=True)
-        past_key_values = out.past_key_values
-        prefill_time = time.perf_counter() - prefill_start
+        out = model(
+            input_ids=generated,
+            attention_mask=mask_prefill,
+            position_ids=pos_ids_prefill,
+            past_key_values=cache,
+            use_cache=True,
+            cache_position=cache_pos_prefill,
+            return_dict=True,
+        )
+    if device == "cuda":
+        torch.cuda.synchronize()
+    prefill_time = time.perf_counter() - prefill_start
 
-        decode_start = time.perf_counter()
-        for _ in range(max_new_tokens):
-            logits = out.logits[:, -1, :]
-            next_token = torch.argmax(logits, dim=-1, keepdim=True)
-            generated = torch.cat([generated, next_token], dim=-1)
+    next_token = torch.argmax(out.logits[:, -1, :], dim=-1, keepdim=True)
+    generated = torch.cat([generated, next_token], dim=-1)
 
-            # Decode step: only last token + cache
+    decode_start = time.perf_counter()
+    with torch.no_grad():
+        for i in range(1, max_new_tokens):
+            cur_pos = prompt_len + i - 1
+            pos_ids = torch.tensor([[cur_pos]], dtype=torch.long, device=device)
+            cache_pos = torch.tensor([cur_pos], dtype=torch.long, device=device)
+            attn_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=device)
+
             out = model(
                 input_ids=next_token,
+                attention_mask=attn_mask,
+                position_ids=pos_ids,
+                past_key_values=cache,
                 use_cache=True,
-                past_key_values=past_key_values,
+                cache_position=cache_pos,
+                return_dict=True,
             )
-            past_key_values = out.past_key_values
-        decode_time = time.perf_counter() - decode_start
+            next_token = torch.argmax(out.logits[:, -1, :], dim=-1, keepdim=True)
+            generated = torch.cat([generated, next_token], dim=-1)
+
+    if device == "cuda":
+        torch.cuda.synchronize()
+    decode_time = time.perf_counter() - decode_start
 
     peak_mem = torch.cuda.max_memory_allocated(device) / 1e6 if device == "cuda" else 0.0
-    new_tokens = generated[0, input_ids.shape[1]:].tolist()
+    new_tokens = generated[0, prompt_len:].tolist()
     return DecodeResult(new_tokens, prefill_time, decode_time, peak_mem)
 
 
@@ -143,6 +170,9 @@ def run_benchmark(
     warmup: int = 2,
 ) -> dict:
     """Full benchmark suite with multiple configs."""
+    from pathlib import Path
+    from peft import PeftModel
+
     if prompt_lengths is None:
         prompt_lengths = [128, 512, 1024]
     if gen_lengths is None:
@@ -151,12 +181,23 @@ def run_benchmark(
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     tokenizer.pad_token = tokenizer.eos_token
 
-    # Load fine-tuned model (LoRA merged or adapter)
     import transformers
     kw = "dtype" if int(transformers.__version__.split(".")[0]) >= 5 else "torch_dtype"
+    compute_dtype = torch.float16 if device == "cuda" else torch.float32
+
+    # Load base model
     model = AutoModelForCausalLM.from_pretrained(
-        model_path, **{kw: torch.float16}, device_map=device
+        base_model, **{kw: compute_dtype}, device_map={"": device} if device == "cuda" else None
     )
+
+    # Attach LoRA adapter if path provided
+    if Path(model_path).is_dir():
+        model = PeftModel.from_pretrained(
+            model,
+            model_path,
+            torch_dtype=compute_dtype,
+            device_map={"": device} if device == "cuda" else None,
+        )
     model.eval()
 
     # Generate test prompts of varying lengths
