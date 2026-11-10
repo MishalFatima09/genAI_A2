@@ -4,6 +4,15 @@ A complete, self-contained Transformer research and implementation repository th
 
 ---
 
+### Project Links & Author Details
+- **Author**: Mishal Fatima (Roll No. `23i-0776`)
+- **Institution**: Department of Computer Science, FAST-NUCES, Islamabad
+- **GitHub Repository**: [https://github.com/MishalFatima09/genAI_A2](https://github.com/MishalFatima09/genAI_A2)
+- **Application Video Demonstration (YouTube)**: [https://youtu.be/iFzf0_iUI3c](https://youtu.be/iFzf0_iUI3c)
+- **Trained Model & Adapter**: Qwen2.5-1.5B-Instruct + LoRA (`/adapter_result_kaggle/`)
+
+---
+
 ## Repository Structure
 
 ```text
